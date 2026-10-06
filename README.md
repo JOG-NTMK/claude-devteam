@@ -8,7 +8,7 @@ you to approve the plan and to confirm before anything is pushed.
 ## Install
 
 ```
-/plugin marketplace add git@github.com:<you>/claude-devteam.git
+/plugin marketplace add git@github.com:JOG-NTMK/claude-devteam.git
 /plugin install devteam@devteam
 ```
 
