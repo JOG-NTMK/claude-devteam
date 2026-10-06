@@ -25,5 +25,7 @@ jobs:
         run: |
           npx -y @anthropic-ai/claude-code@2.1.292 plugin validate . --strict
           npx -y @anthropic-ai/claude-code@2.1.292 plugin validate .claude-plugin/plugin.json --strict
+          npx -y @anthropic-ai/claude-code@2.1.292 plugin validate agents --strict
+          npx -y @anthropic-ai/claude-code@2.1.292 plugin validate skills --strict
         env:
           HOME: ${{ runner.temp }}/claude-home

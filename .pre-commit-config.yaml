@@ -25,7 +25,7 @@ repos:
         types: [python]
       - id: plugin-validate
         name: claude plugin validate
-        entry: bash -c "claude plugin validate . --strict && claude plugin validate .claude-plugin/plugin.json --strict"
+        entry: bash -c "claude plugin validate . --strict && claude plugin validate .claude-plugin/plugin.json --strict && claude plugin validate agents --strict && claude plugin validate skills --strict"
         language: system
         pass_filenames: false
         always_run: true
