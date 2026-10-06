@@ -1,5 +1,9 @@
+import io
+import json
 import subprocess
 from dataclasses import dataclass, field
+from email.message import Message
+from urllib.error import HTTPError
 
 import pytest
 
@@ -29,4 +33,33 @@ class FakeCommands:
 def commands(monkeypatch):
     fake = FakeCommands()
     monkeypatch.setattr("devteam_tools.commands.subprocess.run", fake)
+    return fake
+
+
+@dataclass
+class FakeHttp:
+    """Stands in for urlopen; answers by (method, full URL)."""
+
+    routes: dict[tuple[str, str], tuple[int, object]] = field(default_factory=dict)
+    requests: list = field(default_factory=list)
+
+    def route(self, method: str, url: str, status: int = 200, payload: object = None) -> None:
+        self.routes[(method, url)] = (status, payload if payload is not None else {})
+
+    def __call__(self, request, timeout):
+        self.requests.append(request)
+        key = (request.get_method(), request.full_url)
+        if key not in self.routes:
+            raise AssertionError(f"unexpected request: {key}")
+        status, payload = self.routes[key]
+        body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+        if status >= 400:
+            raise HTTPError(request.full_url, status, "error", Message(), io.BytesIO(body))
+        return io.BytesIO(body)
+
+
+@pytest.fixture
+def http(monkeypatch):
+    fake = FakeHttp()
+    monkeypatch.setattr("devteam_tools.http.urlopen", fake)
     return fake
