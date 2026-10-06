@@ -23,3 +23,15 @@ def test_playwright_server_is_pinned_and_headless():
     assert package.split("@")[-1][0].isdigit(), "pin an exact version, never @latest"
     assert "--headless" in args
     assert "--isolated" in args
+
+
+def test_skill_is_user_invoked_and_references_existing_scripts():
+    text = (ROOT / "skills/team/SKILL.md").read_text(encoding="utf-8")
+    _, block, body = text.split("---\n", 2)
+    assert "name: team" in block
+    assert "disable-model-invocation: true" in block
+    for script in ("scripts/forge.py", "scripts/result.py", "references/pr-body.md"):
+        assert script in body
+        assert (ROOT / "skills/team" / script).is_file()
+    for agent in ("devteam:developer", "devteam:reviewer", "devteam:qa"):
+        assert agent in body
