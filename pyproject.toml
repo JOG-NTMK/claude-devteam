@@ -19,6 +19,7 @@ addopts = "-q"
 line-length = 100
 target-version = "py311"
 extend-exclude = ["docs"]
+src = [".", "skills/team/scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "C90", "PL", "D", "RUF", "SIM", "PT", "TID"]
