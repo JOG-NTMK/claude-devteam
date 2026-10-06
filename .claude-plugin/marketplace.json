@@ -1,0 +1,15 @@
+{
+  "name": "devteam",
+  "description": "The devteam Claude Code plugin.",
+  "owner": {
+    "name": "Jason O'Gorman"
+  },
+  "plugins": [
+    {
+      "name": "devteam",
+      "source": "./",
+      "description": "Developer, reviewer and QA agents that take one issue to a reviewed, QA-tested pull request.",
+      "version": "0.1.0"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "devteam",
+  "displayName": "devteam",
+  "version": "0.1.0",
+  "description": "Developer, reviewer and QA agents that take one issue to a reviewed, QA-tested pull request.",
+  "author": {"name": "Jason O'Gorman"},
+  "license": "MIT"
+}
