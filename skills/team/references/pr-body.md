@@ -16,6 +16,8 @@
 
 {{escalation_line}}
 
+{{ship_notes}}
+
 ## Follow-ups
 
 {{followups}}

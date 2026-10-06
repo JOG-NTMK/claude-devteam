@@ -33,7 +33,8 @@ If the docs don't say how to start the app, or it won't start, stop and return
 
 ## Process
 
-1. **Before shots** (first round only, skip if the change shows nothing in a browser): from
+1. **Before shots** (only when `<run dir>/screenshots/before/` holds no screenshots yet; skip if
+   the change shows nothing in a browser): from
    `git diff <base>...HEAD` in the worktree, pick up to 10 pages the change affects. Start the
    app from the base worktree, screenshot each page into
    `<run dir>/screenshots/before/<name>.png`, then stop it. Always give the screenshot tool the

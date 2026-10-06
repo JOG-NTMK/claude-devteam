@@ -35,3 +35,16 @@ def test_skill_is_user_invoked_and_references_existing_scripts():
         assert (ROOT / "skills/team" / script).is_file()
     for agent in ("devteam:developer", "devteam:reviewer", "devteam:qa"):
         assert agent in body
+
+
+def test_skill_never_puts_untrusted_text_on_a_command_line():
+    commands = [
+        line
+        for line in (ROOT / "skills/team/SKILL.md").read_text(encoding="utf-8").splitlines()
+        if "FORGE " in line and "`FORGE" in line
+    ]
+    assert commands
+    for line in commands:
+        assert "$ARGUMENTS" not in line
+        assert "<title>" not in line
+        assert '--ref "' not in line

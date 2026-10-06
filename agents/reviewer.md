@@ -16,7 +16,8 @@ on what tests and clicking can't catch.
 ## Inputs
 
 The task message gives the run dir, the worktree, the base branch and the round. The run dir holds
-`issue.md`, `plan.md` and earlier `review-<n>.md` files. Review the diff with
+`issue.md`, `plan.md`, earlier `review-<n>.md` files and, after a fix round, `replies.md`: the
+developer's answer to each finding, including why some can't be fixed. Review the diff with
 `cd <worktree> && git diff <base>...HEAD`, and read the surrounding code in the worktree, not just
 the diff. Use Bash only for read-only commands (`git diff`, `git log`, `git show`, `ls`) and
 always as `cd <worktree> && <command>`.
