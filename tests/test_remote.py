@@ -1,7 +1,7 @@
 import pytest
 
 from devteam_tools.errors import AdapterError
-from devteam_tools.remote import Remote, parse_remote
+from devteam_tools.remote import Remote, is_local_remote, parse_remote
 
 
 @pytest.mark.parametrize(
@@ -25,3 +25,17 @@ def test_parse_remote_handles_common_url_shapes(url, expected):
 def test_parse_remote_rejects_urls_without_host_or_path(url):
     with pytest.raises(AdapterError, match="read the origin remote"):
         parse_remote(url)
+
+
+@pytest.mark.parametrize(
+    "url", ["/srv/git/r.git", "file:///srv/r.git", "../r.git", "./r", "C:/repos/r"]
+)
+def test_local_path_remotes_are_recognised(url):
+    assert is_local_remote(url)
+
+
+@pytest.mark.parametrize(
+    "url", ["git@github.com:a/b.git", "https://github.com/a/b", "ssh://git@h:22/a/b"]
+)
+def test_network_remotes_are_not_local(url):
+    assert not is_local_remote(url)

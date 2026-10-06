@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from devteam_tools.errors import AdapterError
 
 SCP_STYLE = re.compile(r"^(?:[^@/\s]+@)?(?P<host>[^:/\s]+):(?P<path>.*)$")
+WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,14 @@ class Remote:
 
     host: str
     path: str
+
+
+def is_local_remote(url: str) -> bool:
+    """Return True when the remote is a path on disk rather than a network URL."""
+    url = url.strip()
+    if url.startswith("file://") or WINDOWS_DRIVE.match(url):
+        return True
+    return "://" not in url and SCP_STYLE.match(url) is None
 
 
 def parse_remote(url: str) -> Remote:
