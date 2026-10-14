@@ -2,8 +2,9 @@
 
 A Claude Code plugin that takes one issue to a reviewed, QA-tested pull request. A developer
 agent plans and implements the change, a reviewer agent reads it, and a QA agent tests the running
-app in a headless browser. The `/devteam:team` skill runs the loop in your session. It stops for
-you to approve the plan and to confirm before anything is pushed.
+app in a headless browser. The `/devteam:team` skill runs the loop in your session, and Claude can
+also start it when you ask it to work on an issue. It stops for you to approve the plan and to
+confirm before anything is pushed.
 
 ## Install
 
@@ -19,6 +20,7 @@ you to approve the plan and to confirm before anything is pushed.
 /devteam:team ABC-123            # Jira issue
 /devteam:team docs/ticket.md     # issue text in a file
 /devteam:team "Add CSV export…"  # pasted issue text
+/devteam:team 42 --no-worktree   # work on a branch in the current checkout
 ```
 
 Run state lives in `.devteam/<id>/` (git-ignored through `.git/info/exclude`). Running the same

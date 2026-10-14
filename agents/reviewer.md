@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: The devteam reviewer. Reads a branch's changes against the issue and the project's rules and returns blocking and non-blocking findings. Only invoke from /devteam:team.
+description: The devteam reviewer. Reads a branch's changes against the issue and the project's rules and returns blocking and non-blocking findings. Only invoke from the devteam:team skill.
 model: claude-opus-5-5
 effort: high
 tools: Read, Grep, Glob, Bash

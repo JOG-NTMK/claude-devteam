@@ -25,11 +25,11 @@ def test_playwright_server_is_pinned_and_headless():
     assert "--isolated" in args
 
 
-def test_skill_is_user_invoked_and_references_existing_scripts():
+def test_skill_is_model_invocable_and_references_existing_scripts():
     text = (ROOT / "skills/team/SKILL.md").read_text(encoding="utf-8")
     _, block, body = text.split("---\n", 2)
     assert "name: team" in block
-    assert "disable-model-invocation: true" in block
+    assert "disable-model-invocation" not in block
     for script in ("scripts/forge.py", "scripts/result.py", "references/pr-body.md"):
         assert script in body
         assert (ROOT / "skills/team" / script).is_file()
@@ -48,3 +48,18 @@ def test_skill_never_puts_untrusted_text_on_a_command_line():
         assert "$ARGUMENTS" not in line
         assert "<title>" not in line
         assert '--ref "' not in line
+
+
+def test_skill_supports_running_without_a_worktree():
+    text = (ROOT / "skills/team/SKILL.md").read_text(encoding="utf-8")
+    _, block, body = text.split("---\n", 2)
+    assert "--no-worktree" in block
+    assert '"use_worktree": true' in body
+    assert "git switch -c <branch> <start>" in body
+    assert "git switch <return_branch>" in body
+
+
+def test_qa_skips_before_shots_instead_of_blocking():
+    text = (ROOT / "agents/qa.md").read_text(encoding="utf-8")
+    assert "skip the before shots" in text
+    assert "`**Before shots:** skipped: <reason>`" in text
