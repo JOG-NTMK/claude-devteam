@@ -1,7 +1,7 @@
 ---
 name: team
-description: Take one issue to a reviewed, QA-tested pull request with the devteam developer, reviewer and QA agents. Use when the user runs /devteam:team, or asks to implement, work on or ship an issue end to end, given an issue number, a Jira key, a file path or pasted issue text. Pass that reference as the argument.
-argument-hint: <issue number | JIRA-123 | file path | issue text>
+description: Take one issue to a reviewed, QA-tested pull request with the devteam developer, reviewer and QA agents. Use when the user runs /devteam:team, or asks to implement, work on or ship an issue end to end, given an issue number, a Jira key, a file path or pasted issue text. Pass that reference as the argument, followed by --no-worktree when the work must happen in the current checkout.
+argument-hint: <issue number | JIRA-123 | file path | issue text> [--no-worktree]
 ---
 
 # devteam: issue → pull request
@@ -10,14 +10,20 @@ You orchestrate three agents on one issue: `devteam:developer`, `devteam:reviewe
 `devteam:qa`. You run the loop, keep state, and do every git push and forge write yourself, only
 after the user confirms. The agents never write to a forge.
 
-The issue reference is: `$ARGUMENTS`
+The arguments are: `$ARGUMENTS`
+
+If the arguments start or end with `--no-worktree` as a separate word, remove that word and work
+in the current checkout instead of a new worktree (`use_worktree: false`). Use this when the app
+can only run from the main checkout. Otherwise `use_worktree: true`. What remains is the issue
+reference, called REF below.
 
 Throughout:
 - `FORGE` means `python3 "${CLAUDE_SKILL_DIR}/scripts/forge.py"` and `RESULT` means
   `python3 "${CLAUDE_SKILL_DIR}/scripts/result.py"`. Both print JSON on success; on failure they
   exit non-zero with what failed and a `Fix:` line. Show that to the user and stop. Never work
   around a failed check.
-- `RUN` is the absolute path `<repo root>/.devteam/<id>`; `WT` is `RUN/wt`.
+- `RUN` is the absolute path `<repo root>/.devteam/<id>`. `WT` is `RUN/wt`, or the repo root
+  when `use_worktree` is false.
 - **Untrusted text never goes on a command line.** Issue text, titles and agent output can hold
   backticks or `$(…)`. Write such text to a file with the Write tool and pass the file's path.
   Only values these instructions build from safe parts (ids, branch names, numbers, paths) appear
@@ -27,15 +33,17 @@ Throughout:
 
 ## 0. Resume or start
 
-If `$ARGUMENTS` names an existing `.devteam/<id>/` directory, or any `.devteam/*/state.json` has
-`"ref"` equal to `$ARGUMENTS`, read that state and continue at its `step`. Say which step you're
-resuming. Otherwise start at 1.
+If REF names an existing `.devteam/<id>/` directory, or any `.devteam/*/state.json` has `"ref"`
+equal to REF, read that state and continue at its `step`, keeping its `use_worktree`. Say which
+step you're resuming. When `use_worktree` is false and `git branch --show-current` isn't the
+state's `branch`: if `git status --porcelain` prints nothing, `git switch <branch>`; otherwise
+stop and ask the user to commit or stash first. Otherwise start at 1.
 
 `state.json`:
 ```json
 {
-  "ref": "<as given>", "id": "<id>", "source": "...", "target": "...", "base": "main",
-  "branch": "feat/42-slug", "worktree": "<abs WT>",
+  "ref": "<REF>", "id": "<id>", "source": "...", "target": "...", "base": "main",
+  "branch": "feat/42-slug", "worktree": "<abs WT>", "use_worktree": true, "return_branch": "",
   "step": "plan | implement | review | fix | qa | ship | done",
   "fixing": [], "rounds_used": 0, "review_round": 0, "qa_round": 0,
   "ship_notes": [], "pushed": false, "pr_url": "", "pr_number": "", "comment_posted": false
@@ -44,6 +52,8 @@ resuming. Otherwise start at 1.
 
 `fixing` lists the findings files the current fix works through. `ship_notes` records anything
 the PR must admit, such as "shipped without QA" or "shipped with open findings".
+`return_branch` is the branch the checkout was on before the run, set only when `use_worktree` is
+false.
 
 ## 1. Preflight and fetch
 
@@ -51,7 +61,7 @@ the PR must admit, such as "shipped without QA" or "shipped with open findings".
    the user must commit or stash first.
 2. Exclude run state from git: add `.devteam/` to `$(git rev-parse --git-common-dir)/info/exclude`
    unless it's already there.
-3. Write `$ARGUMENTS` to `.devteam/incoming-ref.txt` with the Write tool.
+3. Write REF to `.devteam/incoming-ref.txt` with the Write tool.
    `FORGE detect --ref-file .devteam/incoming-ref.txt` gives `source`, `target`, `ref`, `base`.
    Then `FORGE preflight --source <source> --target <target>`.
 4. `FORGE fetch-issue --source <source> --ref-file .devteam/incoming-ref.txt --root .devteam`
@@ -65,10 +75,12 @@ the PR must admit, such as "shipped without QA" or "shipped with open findings".
    `chore`, `refactor`, `perf` when the issue is clearly that). The name is
    `<type>/<id>-<slug>`, where the slug is up to 5 lowercase words of the title using only
    `a-z`, `0-9` and `-`. For example: `feat/ABC-123-export-deals-csv`.
-2. If there is a remote: `git fetch origin <base>` then
-   `git worktree add -b <branch> "<WT>" origin/<base>`. Without a remote:
-   `git worktree add -b <branch> "<WT>" <base>`. If the branch already exists, stop and ask the
-   user whether to resume on it or pick a new name.
+2. If the branch already exists, stop and ask the user whether to resume on it or pick a new
+   name. Let `<start>` be `origin/<base>` after `git fetch origin <base>` when there is a remote,
+   and `<base>` otherwise.
+   - `use_worktree` true: `git worktree add -b <branch> "<WT>" <start>`.
+   - `use_worktree` false: save `git branch --show-current` as `return_branch`, then
+     `git switch -c <branch> <start>`.
 3. Write `state.json` with `step: "plan"`.
 
 ## 3. Calling an agent
@@ -141,8 +153,9 @@ Call QA with `round: <qa_round>`. Save `report` to `RUN/qa-<qa_round>.md` and `s
 **Fix:** if `rounds_used` is already 3, stop and ask the user: one more round, ship with the open
 findings listed, or abandon.
 - Ship: add "shipped with open findings: <files>" to `ship_notes`.
-- Abandon: remove both worktrees with `--force`, then tell the user the branch name and `RUN/`
-  are kept, and stop.
+- Abandon: remove the worktrees that exist with `--force` (`RUN/base`, and `WT` when
+  `use_worktree` is true). When `use_worktree` is false and `return_branch` is set,
+  `git switch <return_branch>`. Tell the user the branch name and `RUN/` are kept, and stop.
 
 Otherwise set `step: "fix"`, save `fixing`, increment `rounds_used`, and call the developer with
 `mode: fix` and the line `findings: <the files in fixing, as absolute paths>`. Append its `reply`
@@ -187,8 +200,9 @@ files.
      the body and the branch name for the user to paste.
    - `FORGE comment --target <target> --pr <pr_number> --body-file RUN/comment.md --screenshots-json RUN/screenshots.json --screenshot-dir RUN/screenshots`,
      leaving out both screenshot flags when there are none. Then record `comment_posted: true`.
-5. Remove the worktree. The tracked files are clean (step 3.5), so only untracked build output
-   such as dependencies remains: `git worktree remove --force "<WT>"`. Keep `RUN/` as the
+5. Leave the branch. The tracked files are clean (step 3.5), so only untracked build output such
+   as dependencies remains. When `use_worktree` is true, `git worktree remove --force "<WT>"`.
+   When it's false and `return_branch` is set, `git switch <return_branch>`. Keep `RUN/` as the
    record of the run, and set `step: "done"`.
 6. Tell the user the PR URL (or the branch), the rounds used, the follow-ups to file, and where
    the screenshots are if they weren't embedded.
@@ -197,7 +211,9 @@ files.
 
 - Stop only at: the plan, an agent decision, the round cap, a `blocked` QA, a failed command, and
   Ship. Everything else runs without asking.
-- Never edit code in the worktree yourself, and never fix an agent's result block yourself:
+- Never edit code in `WT` yourself, and never fix an agent's result block yourself:
   agents do the work, and you only run the loop.
 - Never push, open a PR or post a comment before the user confirms at Ship.
+- When `use_worktree` is false, the agents work in the user's checkout: tell the user at step 2
+  not to edit it or switch branches until the run stops.
 - If the user interrupts, the state on disk is enough to resume with `/devteam:team <id>`.

@@ -20,6 +20,7 @@ confirm before anything is pushed.
 /devteam:team ABC-123            # Jira issue
 /devteam:team docs/ticket.md     # issue text in a file
 /devteam:team "Add CSV export…"  # pasted issue text
+/devteam:team 42 --no-worktree   # work on a branch in the current checkout
 ```
 
 Run state lives in `.devteam/<id>/` (git-ignored through `.git/info/exclude`). Running the same

@@ -38,7 +38,11 @@ If the docs don't say how to start the app, or it won't start, stop and return
    `git diff <base>...HEAD` in the worktree, pick up to 10 pages the change affects. Start the
    app from the base worktree, screenshot each page into
    `<run dir>/screenshots/before/<name>.png`, then stop it. Always give the screenshot tool the
-   full absolute path; a bare file name is saved somewhere else and lost.
+   full absolute path; a bare file name is saved somewhere else and lost. Some apps can only run
+   from one directory (a fixed local domain, shared containers or ports). If the docs say so, or
+   the app won't start from the base worktree, skip the before shots, add
+   `**Before shots:** skipped: <reason>` to the report, and carry on. This never makes the
+   verdict `blocked`.
 2. **Coverage:** map each acceptance criterion to a test that really asserts it. Read the test,
    not just its name. List criteria with no real test.
 3. **Browser:** start the app from the worktree. Walk each criterion as its persona, and try at
