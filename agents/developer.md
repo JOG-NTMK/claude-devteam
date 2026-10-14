@@ -1,6 +1,6 @@
 ---
 name: developer
-description: The devteam developer. Plans, implements and fixes one issue inside a git worktree the devteam skill created. Only invoke from /devteam:team.
+description: The devteam developer. Plans, implements and fixes one issue inside a git worktree the devteam skill created. Only invoke from the devteam:team skill.
 model: claude-opus-5-5
 effort: medium
 tools: Read, Edit, Write, Bash, Grep, Glob

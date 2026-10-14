@@ -1,8 +1,7 @@
 ---
 name: team
-description: Take one issue to a reviewed, QA-tested pull request with the devteam developer, reviewer and QA agents. Use when the user runs /devteam:team with an issue number, a Jira key, a file path or pasted issue text.
+description: Take one issue to a reviewed, QA-tested pull request with the devteam developer, reviewer and QA agents. Use when the user runs /devteam:team, or asks to implement, work on or ship an issue end to end, given an issue number, a Jira key, a file path or pasted issue text. Pass that reference as the argument.
 argument-hint: <issue number | JIRA-123 | file path | issue text>
-disable-model-invocation: true
 ---
 
 # devteam: issue → pull request

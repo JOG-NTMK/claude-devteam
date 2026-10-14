@@ -25,11 +25,11 @@ def test_playwright_server_is_pinned_and_headless():
     assert "--isolated" in args
 
 
-def test_skill_is_user_invoked_and_references_existing_scripts():
+def test_skill_is_model_invocable_and_references_existing_scripts():
     text = (ROOT / "skills/team/SKILL.md").read_text(encoding="utf-8")
     _, block, body = text.split("---\n", 2)
     assert "name: team" in block
-    assert "disable-model-invocation: true" in block
+    assert "disable-model-invocation" not in block
     for script in ("scripts/forge.py", "scripts/result.py", "references/pr-body.md"):
         assert script in body
         assert (ROOT / "skills/team" / script).is_file()
