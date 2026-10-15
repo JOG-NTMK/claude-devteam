@@ -63,3 +63,26 @@ def test_qa_skips_before_shots_instead_of_blocking():
     text = (ROOT / "agents/qa.md").read_text(encoding="utf-8")
     assert "skip the before shots" in text
     assert "`**Before shots:** skipped: <reason>`" in text
+
+
+def test_skill_can_continue_on_the_current_branch():
+    body = (ROOT / "skills/team/SKILL.md").read_text(encoding="utf-8").split("---\n", 2)[2]
+    assert '"new_branch": true' in body
+    assert "continue on `<current>`, or a new branch from `base`" in body
+    assert 'git worktree add --detach "<RUN>/base" <start>' in body
+
+
+def test_ship_offers_pr_push_or_nothing():
+    body = (ROOT / "skills/team/SKILL.md").read_text(encoding="utf-8").split("---\n", 2)[2]
+    for action in ("`pr`:", "`push`:", "`none`:"):
+        assert action in body
+    assert "unless the user chose it at Ship" in body
+
+
+def test_agents_diff_from_the_start_commit_not_the_base_branch():
+    for name in ("developer", "reviewer", "qa"):
+        text = (ROOT / "agents" / f"{name}.md").read_text(encoding="utf-8")
+        assert "<base>" not in text
+    for name in ("reviewer", "qa"):
+        text = (ROOT / "agents" / f"{name}.md").read_text(encoding="utf-8")
+        assert "git diff <start>..HEAD" in text

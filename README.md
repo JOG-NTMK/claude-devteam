@@ -1,10 +1,10 @@
 # devteam
 
-A Claude Code plugin that takes one issue to a reviewed, QA-tested pull request. A developer
-agent plans and implements the change, a reviewer agent reads it, and a QA agent tests the running
-app in a headless browser. The `/devteam:team` skill runs the loop in your session, and Claude can
-also start it when you ask it to work on an issue. It stops for you to approve the plan and to
-confirm before anything is pushed.
+A Claude Code plugin that takes one issue to reviewed, QA-tested commits. A developer agent
+plans and implements the change, a reviewer agent reads it, and a QA agent tests the running app
+in a headless browser. The `/devteam:team` skill runs the loop in your session, and Claude can
+also start it when you ask it to work on an issue. It stops for you to approve the plan, and at
+the end asks whether to open a pull request, only push, or leave the commits on the local branch.
 
 ## Install
 
@@ -22,6 +22,10 @@ confirm before anything is pushed.
 /devteam:team "Add CSV export…"  # pasted issue text
 /devteam:team 42 --no-worktree   # work on a branch in the current checkout
 ```
+
+On the base branch, each run makes a new branch. On any other branch, it asks whether to
+continue there, so several issues can land on one branch; review and QA then cover only the
+commits that run added.
 
 Run state lives in `.devteam/<id>/` (git-ignored through `.git/info/exclude`). Running the same
 command again resumes an interrupted run.
