@@ -1,14 +1,15 @@
 ---
 name: team
-description: Take one issue to a reviewed, QA-tested pull request with the devteam developer, reviewer and QA agents. Use when the user runs /devteam:team, or asks to implement, work on or ship an issue end to end, given an issue number, a Jira key, a file path or pasted issue text. Pass that reference as the argument, followed by --no-worktree when the work must happen in the current checkout.
+description: Take one issue to reviewed, QA-tested commits with the devteam developer, reviewer and QA agents, on a new branch or the current one, then optionally push and open a pull request. Use when the user runs /devteam:team, or asks to implement, work on or ship an issue end to end, given an issue number, a Jira key, a file path or pasted issue text. Pass that reference as the argument, followed by --no-worktree when the work must happen in the current checkout.
 argument-hint: <issue number | JIRA-123 | file path | issue text> [--no-worktree]
 ---
 
-# devteam: issue → pull request
+# devteam: issue → reviewed commits
 
 You orchestrate three agents on one issue: `devteam:developer`, `devteam:reviewer` and
 `devteam:qa`. You run the loop, keep state, and do every git push and forge write yourself, only
-after the user confirms. The agents never write to a forge.
+when the user chooses it at Ship. Doing neither is a fine outcome. The agents never write to a
+forge.
 
 The arguments are: `$ARGUMENTS`
 
@@ -43,17 +44,23 @@ stop and ask the user to commit or stash first. Otherwise start at 1.
 ```json
 {
   "ref": "<REF>", "id": "<id>", "source": "...", "target": "...", "base": "main",
-  "branch": "feat/42-slug", "worktree": "<abs WT>", "use_worktree": true, "return_branch": "",
+  "branch": "feat/42-slug", "new_branch": true, "start": "<commit sha>",
+  "worktree": "<abs WT>", "use_worktree": true, "return_branch": "",
   "step": "plan | implement | review | fix | qa | ship | done",
   "fixing": [], "rounds_used": 0, "review_round": 0, "qa_round": 0,
-  "ship_notes": [], "pushed": false, "pr_url": "", "pr_number": "", "comment_posted": false
+  "ship_notes": [], "ship_action": "", "pushed": false, "pr_url": "", "pr_number": "",
+  "comment_posted": false
 }
 ```
 
 `fixing` lists the findings files the current fix works through. `ship_notes` records anything
 the PR must admit, such as "shipped without QA" or "shipped with open findings".
-`return_branch` is the branch the checkout was on before the run, set only when `use_worktree` is
-false.
+`base` is the branch a pull request would target. `start` is the commit this run's work starts
+from: every diff, the QA before shots and the developer's baseline use it, so earlier commits on
+a reused branch aren't reviewed again. `new_branch` is false when the run continues on the branch
+the checkout was already on. `return_branch` is the branch the checkout was on before the run,
+set only when the run switched away from it. `ship_action` is the user's choice at Ship: `pr`,
+`push` or `none`.
 
 ## 1. Preflight and fetch
 
@@ -71,15 +78,25 @@ false.
 
 ## 2. Branch and worktree
 
+Let `<current>` be `git branch --show-current`. If it's non-empty and isn't `base`, ask the user
+(AskUserQuestion): continue on `<current>`, or a new branch from `base`.
+- **Continue:** `branch` is `<current>`, `new_branch: false`, `start` is `git rev-parse HEAD`.
+  The branch is checked out here, so set `use_worktree: false` and leave `return_branch` empty.
+  If the user passed no `--no-worktree`, say the run uses the current checkout. Skip to step 3
+  below.
+- **New branch:** carry on with step 1 below.
+
+On `base` or a detached HEAD, carry on with step 1 below without asking.
+
 1. Branch type: `fix` if the issue describes a defect, otherwise `feat` (or `docs`, `test`,
    `chore`, `refactor`, `perf` when the issue is clearly that). The name is
    `<type>/<id>-<slug>`, where the slug is up to 5 lowercase words of the title using only
    `a-z`, `0-9` and `-`. For example: `feat/ABC-123-export-deals-csv`.
 2. If the branch already exists, stop and ask the user whether to resume on it or pick a new
-   name. Let `<start>` be `origin/<base>` after `git fetch origin <base>` when there is a remote,
-   and `<base>` otherwise.
+   name. Let `<from>` be `origin/<base>` after `git fetch origin <base>` when there is a remote,
+   and `<base>` otherwise. Set `new_branch: true` and `start` to `git rev-parse <from>`.
    - `use_worktree` true: `git worktree add -b <branch> "<WT>" <start>`.
-   - `use_worktree` false: save `git branch --show-current` as `return_branch`, then
+   - `use_worktree` false: save `<current>` as `return_branch`, then
      `git switch -c <branch> <start>`.
 3. Write `state.json` with `step: "plan"`.
 
@@ -92,7 +109,7 @@ For every agent call:
    mode: <plan | implement | fix>        (developer only)
    run dir: <RUN>
    worktree: <WT>
-   base: <base>
+   start: <start>
    round: <n>                            (reviewer and qa)
    base worktree: <RUN/base>             (qa only)
    ```
@@ -121,7 +138,7 @@ For every agent call:
 ## 5. Implement
 
 Developer, `mode: implement`. Save its `summary` to `RUN/summary.md` and its `followups` to
-`RUN/followups.json`. Check that `git -C "<WT>" log <base>..HEAD --oneline` shows commits. If it
+`RUN/followups.json`. Check that `git -C "<WT>" log <start>..HEAD --oneline` shows commits. If it
 doesn't, treat that as a failed result (step 3.3). Update `step: "review"`.
 
 ## 6. Review and QA loop
@@ -135,10 +152,9 @@ summary, then each finding with its severity, file:line and text. If `request_ch
 **Fix** with `fixing: ["review-<review_round>.md"]`. Otherwise set `step: "qa"` and go to
 **QA**.
 
-**QA:** increment `qa_round`. Make a fresh base worktree at the commit the branch started from:
+**QA:** increment `qa_round`. Make a fresh base worktree at `start`:
 - if `<RUN>/base` exists, `git worktree remove --force "<RUN>/base"` first;
-- then `git worktree add --detach "<RUN>/base" "$(git -C "<WT>" merge-base HEAD <B>)"`, where
-  `<B>` is `origin/<base>` when there is a remote and `<base>` otherwise.
+- then `git worktree add --detach "<RUN>/base" <start>`.
 
 Call QA with `round: <qa_round>`. Save `report` to `RUN/qa-<qa_round>.md` and `screenshots` to
 `RUN/screenshots.json`. Then remove the base worktree
@@ -154,8 +170,9 @@ Call QA with `round: <qa_round>`. Save `report` to `RUN/qa-<qa_round>.md` and `s
 findings listed, or abandon.
 - Ship: add "shipped with open findings: <files>" to `ship_notes`.
 - Abandon: remove the worktrees that exist with `--force` (`RUN/base`, and `WT` when
-  `use_worktree` is true). When `use_worktree` is false and `return_branch` is set,
-  `git switch <return_branch>`. Tell the user the branch name and `RUN/` are kept, and stop.
+  `use_worktree` is true). When `return_branch` is set, `git switch <return_branch>`. Tell the
+  user the branch name and `RUN/` are kept, and stop. When `new_branch` is false, also tell them
+  the run's commits are on `<branch>` after `<start>`; never reset them yourself.
 
 Otherwise set `step: "fix"`, save `fixing`, increment `rounds_used`, and call the developer with
 `mode: fix` and the line `findings: <the files in fixing, as absolute paths>`. Append its `reply`
@@ -170,12 +187,17 @@ files.
    - the review verdict, with any `escalate` reason shown prominently, and the non-blocking
      findings still open;
    - the QA table and the `ship_notes`;
-   - `git -C "<WT>" diff --stat <base>...HEAD`;
+   - `git -C "<WT>" diff --stat <start>..HEAD`;
    - the follow-ups.
 
-   Ask: ship, or stop here.
-2. Build `RUN/pr-body.md` from `${CLAUDE_SKILL_DIR}/references/pr-body.md`, replacing each
-   `{{…}}`:
+   Ask (AskUserQuestion), and save the answer as `ship_action`:
+   - `pr`: push and open a pull request against `base`, with the review and QA comment. On plain
+     git this prints a description to paste instead. When the branch already has a pull request,
+     suggest `push`.
+   - `push`: push the branch only. Offer it only when there is a remote.
+   - `none`: leave the commits on the local branch. Go straight to step 5.
+2. For `pr` only, build `RUN/pr-body.md` from `${CLAUDE_SKILL_DIR}/references/pr-body.md`,
+   replacing each `{{…}}`:
    - `closes_line`: `Closes #<id>` for a GitHub or GitLab issue; the Jira key for Jira; nothing
      for text.
    - `developer_summary`: `RUN/summary.md`.
@@ -188,32 +210,32 @@ files.
    - `rounds_used`: the number.
 
    Delete lines left empty, so no `{{` remains.
-3. Build `RUN/comment.md`. Under `## Review`, put every round's verdict and summary, then every
-   finding, including non-blocking ones. Under `## Developer replies`, put `RUN/replies.md` if
-   it exists. Under `## QA`, put the latest `qa-<n>.md`.
-4. Do only the writes `state.json` hasn't recorded yet, and record each one as soon as it
-   succeeds:
-   - Push (if there is a remote): `git -C "<WT>" push -u origin <branch>`, then `pushed: true`.
-     Never force-push.
-   - `FORGE open-pr --target <target> --branch <branch> --base <base> --title-file RUN/title.txt --body-file RUN/pr-body.md`,
+3. For `pr` only, build `RUN/comment.md`. Under `## Review`, put every round's verdict and
+   summary, then every finding, including non-blocking ones. Under `## Developer replies`, put
+   `RUN/replies.md` if it exists. Under `## QA`, put the latest `qa-<n>.md`.
+4. Do only the writes `ship_action` asks for that `state.json` hasn't recorded yet, and record
+   each one as soon as it succeeds:
+   - Push (`pr` and `push`, if there is a remote): `git -C "<WT>" push -u origin <branch>`, then
+     `pushed: true`. Never force-push. If the push is rejected, show the error and stop.
+   - `pr` only: `FORGE open-pr --target <target> --branch <branch> --base <base> --title-file RUN/title.txt --body-file RUN/pr-body.md`,
      then record `pr_url` and `pr_number`. On plain git, where the URL is empty, print the title,
      the body and the branch name for the user to paste.
-   - `FORGE comment --target <target> --pr <pr_number> --body-file RUN/comment.md --screenshots-json RUN/screenshots.json --screenshot-dir RUN/screenshots`,
+   - `pr` only: `FORGE comment --target <target> --pr <pr_number> --body-file RUN/comment.md --screenshots-json RUN/screenshots.json --screenshot-dir RUN/screenshots`,
      leaving out both screenshot flags when there are none. Then record `comment_posted: true`.
 5. Leave the branch. The tracked files are clean (step 3.5), so only untracked build output such
    as dependencies remains. When `use_worktree` is true, `git worktree remove --force "<WT>"`.
-   When it's false and `return_branch` is set, `git switch <return_branch>`. Keep `RUN/` as the
-   record of the run, and set `step: "done"`.
-6. Tell the user the PR URL (or the branch), the rounds used, the follow-ups to file, and where
-   the screenshots are if they weren't embedded.
+   When `return_branch` is set, `git switch <return_branch>`. Keep `RUN/` as the record of the
+   run, and set `step: "done"`.
+6. Tell the user the branch, the PR URL if one was opened, whether it was pushed, the rounds
+   used, the follow-ups to file, and where the screenshots are if they weren't embedded.
 
 ## Rules
 
-- Stop only at: the plan, an agent decision, the round cap, a `blocked` QA, a failed command, and
-  Ship. Everything else runs without asking.
+- Stop only at: the branch question, the plan, an agent decision, the round cap, a `blocked` QA,
+  a failed command, and Ship. Everything else runs without asking.
 - Never edit code in `WT` yourself, and never fix an agent's result block yourself:
   agents do the work, and you only run the loop.
-- Never push, open a PR or post a comment before the user confirms at Ship.
+- Never push, open a PR or post a comment unless the user chose it at Ship.
 - When `use_worktree` is false, the agents work in the user's checkout: tell the user at step 2
   not to edit it or switch branches until the run stops.
 - If the user interrupts, the state on disk is enough to resume with `/devteam:team <id>`.
